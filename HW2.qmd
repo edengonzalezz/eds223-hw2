@@ -1,0 +1,258 @@
+---
+title: "EDS223 Homework 2"
+subtitle: "Exploring patterns of environmental justice"
+author: "Eden Gonzalez"
+date: 2025-10-24
+execute: 
+  eval: true
+format: pdf
+mainfont: Helvetica
+editor_options: 
+  chunk_output_type: console
+---
+
+**Load libraries**
+
+```{r}
+#| warning: false
+#| message: false
+library(sf)
+library(tmap)
+library(tidyverse)
+library(spData)
+library(gt)
+```
+
+**Load data**
+```{r}
+#| warning: false
+#| message: false
+# Load the data into respective variables
+# EJ and census block data 
+ejscreen <- sf::st_read("data/ejscreen/EJSCREEN_2023_BG_StatePct_with_AS_CNMI_GU_VI.gdb/") 
+# Crash Data
+crash <- read_csv("data/SWITRS_LA/Crashes.csv")
+# HOLC data
+redlining <- read_sf("data/mapping-inequality/mapping-inequality-los-angeles.json")
+```
+
+
+# Part 1: Legacy of redlining in current environmental (in)justice
+
+
+## Create a map of historical redlining neighborhoods
+```{r}
+# Map of historical redlining neighborhoods
+tm_basemap("OpenStreetMap") +  # Pick appropriate basemap
+tm_shape(redlining) +          # Map the redlining data 
+  tm_polygons(fill = "grade",  # Fill neighborhoods colored by HOLC grade
+    fill.scale = tm_scale(
+      values = c("palegreen4", "skyblue", "gold2",
+                 "palevioletred2", "white")),  # Reassign colors
+    fill.legend = tm_legend(title = " HOLC grade", 
+    position = tm_pos_out("right"), 
+              frame = FALSE,
+              title.size = 0.7)) +
+  tm_scalebar() +  # Add scale bar   
+  tm_compass(position = c("right", "top")) + 
+  tm_credits("Source: EJScreen") +
+  tm_title("HOLC Grades in Los Angeles County ") +
+  tm_layout(frame.lwd = 0.4)
+
+```
+
+
+## Create a table
+Sumarize the percentage of census block groups that fall within each HOLC grade. 
+```{r}
+# Filter to keep values from Los Angeles County only 
+los_angeles <- ejscreen |> 
+  filter(CNTY_NAME == "Los Angeles County") 
+
+# Match redlining crs into los_angeles data frame's crs
+redlining <- st_transform(redlining, st_crs(los_angeles))
+```
+
+
+```{r}
+# Verification that crs match
+if(st_crs(los_angeles) == st_crs(redlining)){
+  print("coordinate reference systems match!")
+}else{
+  warning("coordinate reference systems do NOT match")
+  print(paste("los_angeles has ", st_crs(los_angeles)$epsg, "EPSG"))
+  print(paste("redlining has",  st_crs(redlining)$epsg, "EPSG"))
+}
+```
+
+```{r}
+# Use st_join to combine census block data with grade data
+# This is now possible as they have been assigned the same geometries
+la_red <- st_join(los_angeles, redlining) |> 
+  st_drop_geometry()  # No longer need the geometries
+```
+
+```{r}
+# Create the summary table with percentage of each percentage 
+# of census block groups that fall within each HOLC grade
+summary_table <- la_red |> 
+  count(grade) |>  # Count the number of observations by grade
+  # Divide by the total number of observations
+  mutate(percentage = round((n / nrow(la_red)) * 100, digits = 2)) |> 
+  # Keep only the grade and percentage columns
+  select(grade, percentage) |> 
+  gt() |> 
+  tab_header("Census Block Groups Per HOLC Grade")
+
+# Print summary table 
+summary_table
+```
+
+```{r}
+la_red |> 
+  count(grade) 
+```
+
+## Create visualizations summarizing current conditions within HOLC grades 
+
+### Wrangle Data 
+
+Use the mean for the analysis of percent low income, percentile of PM2.5, and low life expectancy. 
+
+```{r}
+# Mean percent low income per HOLC grade
+mean_pct_low_inc <- la_red |> 
+  st_drop_geometry() |> 
+  summarize(mean_pct_low_inc = mean(LOWINCPCT, na.rm = TRUE), .by = grade) |> 
+  mutate(mean_pct_low_inc = mean_pct_low_inc * 100) |> 
+  drop_na() 
+```
+
+```{r}
+# Mean percentile of PM2.5 per HOLC grade
+mean_pctl_pm25 <- la_red |> 
+  st_drop_geometry() |> 
+  summarize(mean_pctl_pm25 = mean(P_PM25, na.rm = TRUE), .by = grade) |> 
+  drop_na() 
+```
+
+```{r}
+# Mean percentile for low life expectancy per HOLC grade
+mean_pctl_lif_exp <- la_red |> 
+  st_drop_geometry() |> 
+  summarize(mean_pctl_lif_exp = mean(P_LIFEEXPPCT, na.rm = TRUE), .by = grade) |> 
+  drop_na()
+```
+
+### Plot the visualizations
+```{r}
+# Create a color dictionary to  assign colors for each grade
+grades_colors <- c("A" = "palegreen4", 
+"B" =  "skyblue", 
+"C" = "gold2", 
+"D" = "palevioletred2")
+```
+
+```{r}
+# Plot the mean percent low income per HOLC grade
+ggplot(mean_pct_low_inc, aes(x = grade, y = mean_pct_low_inc, fill = grade)) +
+  geom_col() +
+  scale_fill_manual(values = grades_colors) +
+  labs(x = "HOLC Grades", y = "Percent Low Income (%)", 
+  title = "Mean Percentage of Low Income Status") +
+  theme_bw()
+ 
+```
+
+```{r}
+# Plot the mean percentile of PM2.5 per HOLC grade
+ggplot(mean_pctl_pm25, aes(x = grade, y = mean_pctl_pm25, fill = grade)) +
+  geom_col() +
+  scale_fill_manual(values = grades_colors) +
+  labs(x = "HOLC Grades", y = "Percentile of PM 2.5 Exposure", 
+  title = "Mean Percentile of PM 2.5") +
+  theme_bw()
+```
+
+```{r}
+# Plot the mean percentile of low life expectancy per HOLC grade
+ggplot(mean_pctl_lif_exp, aes(x = grade, y = mean_pctl_lif_exp, fill = grade)) +
+  geom_col() +
+  scale_fill_manual(values = grades_colors) +
+  labs(x = "HOLC Grades", y = "Percentile of Low Life Expectancy", 
+  title = "Mean Percentile of Low Life Expectancy") +
+  theme_bw()
+```
+
+
+## Reflect 
+
+In all three graphs -mean percentage of low income status, mean percentile PM2.5, and mean percentile of low life expectancy- HOLC grade D had the highest values, C, B, A following in decreasing order. On average, about 40% of residents in census block groups within HOLC grade D are low income, compared to about 15% in grade A.  
+In general PM2.5 census block groups had high mean percentiles of PM2.5. Though, census block groups in grade D had higher mean than grade A (difference of 8.1 points on average). Lastly, on average, census block groups in grade D had higher low life expectancy (in the ~53.04 percentile) compared to census block groups in grade A (in the ~23.76 percentile), on average.  In combination, the graphs highlight how the legacy of redlining persists as these neighborhoods are most burdened by poverty, air pollution, and lower life expectancy, on average. 
+
+
+Note: There are some logistical limitations in this analysis. There are some block groups that overlap two HOLC polygons and therefore get duplicated and counted in both grades. 
+
+
+# Part 2: Legacy of redlining in pedstrian and bike accidents
+
+```{r}
+# Bike and pedestrian acidents from crash data
+bike_pedestrian <- crash |> 
+  # Filter for pedestrian and bicycle accidents
+  filter(PEDESTRIAN_ACCIDENT == "Y"  | BICYCLE_ACCIDENT == "Y") |> 
+  # Drop values rows with empty coordinates
+  drop_na(POINT_X, POINT_Y) |> 
+  # Assign the coordinates to make the data frame into a simple feature
+  st_as_sf(coords = c("POINT_X", "POINT_Y"), crs = 4326) |> 
+  # Transform to match redlining CRS
+  st_transform(st_crs(redlining))
+```
+
+```{r}
+# Check that coordinate reference systems match
+if(st_crs(bike_pedestrian) == st_crs(redlining)){
+  print("coordinate reference systems match!")
+}else{
+  warning("coordinate reference systems do NOT match")
+  print(paste("bike_pedestrian has ", st_crs(bike_pedestrian)$epsg, "EPSG"))
+  print(paste("redlining has",  st_crs(redlining)$epsg, "EPSG"))
+}
+```
+
+```{r}
+# Keep the coordinates that intersect with the los angeles data
+#  frame to make sure only coordinate points in la are mapped. 
+bike_pedestrian <- st_filter(bike_pedestrian, los_angeles)
+
+# Use st_join to combine bike & pedestrian crash data with grade data
+crash_red <- st_join(bike_pedestrian, redlining) |> 
+  st_drop_geometry() 
+```
+
+```{r}
+# Calculate percentage of pedestraian and bike crashes and
+# fatalities per HOLC grade
+crash_summary <- crash_red |> 
+  # Remove rows where grade is empty
+  filter(!is.na(grade)) |> 
+  group_by(grade) |> 
+  summarise(crashes = n()) |> 
+  mutate(crashes = crashes / sum(crashes) * 100)  
+
+crash_summary
+```
+
+```{r}
+# Graph the pedestraian and bike crashes and fatalities 
+# per HOLC grade
+ggplot(crash_summary, aes(x = grade, y = crashes, fill = grade)) +
+  geom_col() +
+  scale_fill_manual(values = grades_colors) + # Assign the colors 
+  labs(x = "HOLC Grade", 
+       y = "Percent",
+       title = "Pedestrian and Bike Accidents and\nFatalities in Los Angeles") +
+  theme_bw() 
+```
+
+The graph shows the percentage of pedestrian and bike accidents and fatalities in Los Angeles County by HOLC grade. When we drop the NA values, by far, census block groups of grade C had the highest percentage of pedestrian and bike accidents and fatalities (roughly 57.5%). HOLC grade D had the second highest percentage, roughly 28.9%. Meanwhile, areas with grade A had roughly 2.29% of pedestrian and bike accidents and fatalities in Los Angeles County. 
