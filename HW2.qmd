@@ -108,11 +108,6 @@ summary_table <- la_red |>
 summary_table
 ```
 
-```{r}
-la_red |> 
-  count(grade) 
-```
-
 ## Create visualizations summarizing current conditions within HOLC grades 
 
 ### Wrangle Data 
