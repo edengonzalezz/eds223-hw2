@@ -228,6 +228,11 @@ bike_pedestrian <- st_filter(bike_pedestrian, los_angeles)
 # Use st_join to combine bike & pedestrian crash data with grade data
 crash_red <- st_join(bike_pedestrian, redlining) |> 
   st_drop_geometry() 
+
+
+# Check range of accident years
+min(crash_red$ACCIDENT_YEAR)
+max(crash_red$ACCIDENT_YEAR)
 ```
 
 ```{r}
@@ -237,8 +242,8 @@ crash_summary <- crash_red |>
   # Remove rows where grade is empty
   filter(!is.na(grade)) |> 
   group_by(grade) |> 
-  summarise(crashes = n()) |> 
-  mutate(crashes = crashes / sum(crashes) * 100)  
+  summarise(n = n()) |> 
+  mutate(crashes = n / sum(n) * 100)  
 
 crash_summary
 ```
@@ -250,7 +255,7 @@ ggplot(crash_summary, aes(x = grade, y = crashes, fill = grade)) +
   geom_col() +
   scale_fill_manual(values = grades_colors) + # Assign the colors 
   labs(x = "HOLC Grade", 
-       y = "Percent",
+       y = "Percentage (%)",
        title = "Pedestrian and Bike Accidents and\nFatalities in Los Angeles") +
   theme_bw() 
 ```
